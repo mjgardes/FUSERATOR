@@ -36,13 +36,15 @@ static const char glyphPattern[ 13 ] = {
 	_B | DP,			  // !
 	_B | _C | _E | _F | _G,	          // H
 };
-/*
+
+char displayBuffer[3] = {0xA, 0xA, 0xA};
+
 void initButtons(void) {
   P1DIR &= ~BUTTONS;		//Set pins 4-6 as inputs (check this)
   P1REN |= BUTTONS;		//Enable internal pull-up
   P1OUT |= BUTTONS;		//Set pull-up high
 }
-*/
+
 void initLEDs(void) {
   P1DIR |= SRDATA;		//Set pin 9 as output (for now)
   P2DIR |= DEMUX;		//Set pins 12-13 as output
@@ -60,14 +62,6 @@ void initRelays(void) {
 void initThermistor(void) {
 }
 
-void srClock(char digit) {	//The hardware needs to know which LED digit to enable
-//  P2OUT |= DEMUX;		//Make sure clock bit is off
-  				//Delay if necessary
-				
-  P2OUT |= digit & DEMUX;	//Clock ticks when a digit (1-3) is selected.  
-// glyphPattern 			//In this pin config, offset is zero.  
-				//Values larger than two bits are filtered.
-}
 */
 void dispNumber(char glyph, char digit) {
   				//Turn off global interrupts while writing to 164 (not necessary, you idiot. interrupts are already off.)
@@ -85,13 +79,12 @@ int currentGlyphPattern = glyphPattern[glyph];
 void blank() {
   P2OUT |= DEMUX;
 }
-/*
+
 void display(char* displayString) {
   for (char i = 0; i<3; ++i) {
     dispNumber(displayString[i], i);
   }
 }
-*/
 
 int main(void) {
 
@@ -103,43 +96,23 @@ int main(void) {
   TACCTL0 = CCIE;		//Enable the interrupt for TACCR0 match
   TACCR0 = 100;			//Set TACCR0 which also starts the timer
   WRITE_SR(GIE);		//Enable global interrupts
-  //New test code
-  //Fill up the shift register fast:
-/*  P1OUT |= SRDATA;
-  for (char i = 0; i < 8; ++i) {
-    P2OUT |= DEMUX;
-    P2OUT &= ~DEMUX;
-  }*/
+  displayBuffer = {1, 2, 3};
   while(1) {
-	//Loop forever, interrupts take care of the rest
   }
 }
 
 int testDigit = 1;
 
 interrupt(TIMERA0_VECTOR) TIMERA0_ISR(void) {
-//  P2OUT |= DEMUX; 	//get mux unstuck
-/*  switch (testDigit) {
-    case 1: 
-      P2OUT &= (DIGIT1 | ~DEMUX);
-      testDigit = 2;
-      break;
-    case 2:
-      P2OUT &= (DIGIT2 | ~DEMUX);
-      testDigit = 3;
-      break;
-    case 3: 
-      P2OUT &= (DIGIT3 | ~DEMUX);
-      testDigit = 1;
-      break;
-  }
-*/
-  dispNumber(0xC,DIGIT1);	// Display H (0xC) on DIGIT1
+  dispNumber(displayBuffer[0],DIGIT1);	// Display H (0xC) on DIGIT1
   __delay_cycles(2400);	// Just pause here for testing
-  dispNumber(0x1,DIGIT2);	// Display 1 (0x1) on DIGIT2
+  dispNumber(displayBuffer[1],DIGIT2);	// Display 1 (0x1) on DIGIT2
   __delay_cycles(2400);	// Just pause here for testing
-  dispNumber(0xB,DIGIT3);	// Display ! (0xB) on DIGIT3
+  dispNumber(displayBufffer[2],DIGIT3);	// Display ! (0xB) on DIGIT3
   __delay_cycles(2400);	// Just pause here for testing
   blank();			// Give all the digits equal time
 }
 
+interrupt(PORT1_VECTOR) TIMERA0_ISR(void) {
+  
+}
