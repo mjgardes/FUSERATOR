@@ -5,9 +5,9 @@
 #define BUTTONS (BIT2 + BIT3 + BIT4)
 #define SRDATA BIT7
 #define DEMUX (BIT6 + BIT7)
-#define DIGIT1 0
+#define DIGIT3 0
 #define DIGIT2 BIT6
-#define DIGIT3 BIT7
+#define DIGIT1 BIT7
 #define HEAT BIT0
 #define MOTOR BIT1
                       //   --A--
@@ -34,7 +34,7 @@ static const char glyphPattern[ 13 ] = {
 	_A | _B | _C | _D | _F | _G,      // 9
 	0,                                // none
 	_B | DP,			  // !
-	_B | _C | _E | _F | _G | DP,	  // H
+	_B | _C | _E | _F | _G,	          // H
 };
 /*
 void initButtons(void) {
@@ -68,22 +68,30 @@ void srClock(char digit) {	//The hardware needs to know which LED digit to enabl
 // glyphPattern 			//In this pin config, offset is zero.  
 				//Values larger than two bits are filtered.
 }
-
+*/
 void dispNumber(char glyph, char digit) {
-  				//Turn off global interrupts while writing to 164
+  				//Turn off global interrupts while writing to 164 (not necessary, you idiot. interrupts are already off.)
+int currentGlyphPattern = glyphPattern[glyph];
   for (char i = 0; i <=7; ++i) {
     P2OUT |= DEMUX;		//Lower clock and turn off LEDs
     P1OUT &= ~SRDATA;	//Blank SR input
-    P1OUT |= (glyphPattern[glyph] &  (1 << i)) >> i;	//Read SR bit from table and write to SR data pin
-    P2OUT = digit; // Select character on decoder, which raises clock
+//    P1OUT |= ((glyphPattern[glyph] &  (1 << i)) >> i) << 7;	//Read SR bit from table and write to SR data pin -- The compiler does not do this well
+    P1OUT |= currentGlyphPattern & SRDATA;	//I need to stop swapping endianness of this step  //Luckily SRDATA is BIT7!
+    currentGlyphPattern = currentGlyphPattern << 1;
+    P2OUT &= (digit | ~DEMUX); // Select character on decoder, which raises clock
   }
 }
 
+void blank() {
+  P2OUT |= DEMUX;
+}
+/*
 void display(char* displayString) {
   for (char i = 0; i<3; ++i) {
     dispNumber(displayString[i], i);
   }
-}*/
+}
+*/
 
 int main(void) {
 
@@ -93,31 +101,25 @@ int main(void) {
   BCSCTL3 |= LFXT1S_2;		//Set ACLK to use internal VLO (12 kHz clock)
   TACTL = TASSEL_1 | MC_1;	//Set TimerA to use auxiliary clock in UP mode
   TACCTL0 = CCIE;		//Enable the interrupt for TACCR0 match
-  TACCR0 = 32;			//Set TACCR0 which also starts the timer - roughly 0.01 sec
+  TACCR0 = 100;			//Set TACCR0 which also starts the timer
   WRITE_SR(GIE);		//Enable global interrupts
   //New test code
   //Fill up the shift register fast:
-  P1OUT |= SRDATA;
+/*  P1OUT |= SRDATA;
   for (char i = 0; i < 8; ++i) {
     P2OUT |= DEMUX;
     P2OUT &= ~DEMUX;
-  }
+  }*/
   while(1) {
 	//Loop forever, interrupts take care of the rest
-  //  display("H1!");
   }
-  //dispNumber(1,0);
-  //Just fire up one segment
-  //P1OUT |= SRDATA; //Shift register high
-  //P2OUT &= 0; //decoder low
-  //
 }
 
 int testDigit = 1;
 
 interrupt(TIMERA0_VECTOR) TIMERA0_ISR(void) {
-  P2OUT |= DEMUX; 	//get mux unstuck
-  switch (testDigit) {
+//  P2OUT |= DEMUX; 	//get mux unstuck
+/*  switch (testDigit) {
     case 1: 
       P2OUT &= (DIGIT1 | ~DEMUX);
       testDigit = 2;
@@ -131,5 +133,13 @@ interrupt(TIMERA0_VECTOR) TIMERA0_ISR(void) {
       testDigit = 1;
       break;
   }
-//  P2OUT &= ~DEMUX; //Raise clock bit and turn on LEDs
+*/
+  dispNumber(0xC,DIGIT1);	// Display H (0xC) on DIGIT1
+  __delay_cycles(2400);	// Just pause here for testing
+  dispNumber(0x1,DIGIT2);	// Display 1 (0x1) on DIGIT2
+  __delay_cycles(2400);	// Just pause here for testing
+  dispNumber(0xB,DIGIT3);	// Display ! (0xB) on DIGIT3
+  __delay_cycles(2400);	// Just pause here for testing
+  blank();			// Give all the digits equal time
 }
+
