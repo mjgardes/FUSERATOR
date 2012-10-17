@@ -2,6 +2,9 @@
 
 #define interrupt(x) void __attribute__((interrupt (x)))
 
+#define BUTTON1 BIT4
+#define BUTTON2 BIT3
+#define BUTTON3 BIT2
 #define BUTTONS (BIT2 + BIT3 + BIT4)
 #define SRDATA BIT7
 #define DEMUX (BIT6 + BIT7)
@@ -40,12 +43,18 @@ static const char glyphPattern[ 13 ] = {
 char displayBuffer[3] = {0xA, 0xA, 0xA};
 
 void initButtons(void) {
-  P1DIR &= ~BUTTONS;		//Set pins 4-6 as inputs (check this)
+  P1DIR &= ~BUTTONS;		//Set pins 4-6 as inputs
   P1REN |= BUTTONS;		//Enable internal pull-up
   P1OUT |= BUTTONS;		//Set pull-up high
+  P1IES |= (BUTTON2 + BUTTON3);	//Look for falling edges
+  P1IFG &= ~(BUTTON2 + BUTTON3);	//Just in case
+  P1IE |= BUTTON2 + BUTTON3;	//Now enable
 }
 
 void initLEDs(void) {
+  TACTL = TASSEL_1 | MC_1;	//Set TimerA to use auxiliary clock in UP mode
+  TACCTL0 = CCIE;		//Enable the interrupt for TACCR0 match
+  TACCR0 = 60;			//Set TACCR0 which also starts the timer
   P1DIR |= SRDATA;		//Set pin 9 as output (for now)
   P2DIR |= DEMUX;		//Set pins 12-13 as output
   P1OUT |= SRDATA;		//Turn on outputs
@@ -68,11 +77,10 @@ void dispNumber(char glyph, char digit) {
 int currentGlyphPattern = glyphPattern[glyph];
   for (char i = 0; i <=7; ++i) {
     P2OUT |= DEMUX;		//Lower clock and turn off LEDs
-    P1OUT &= ~SRDATA;	//Blank SR input
-//    P1OUT |= ((glyphPattern[glyph] &  (1 << i)) >> i) << 7;	//Read SR bit from table and write to SR data pin -- The compiler does not do this well
-    P1OUT |= currentGlyphPattern & SRDATA;	//I need to stop swapping endianness of this step  //Luckily SRDATA is BIT7!
+    P1OUT &= ~SRDATA;		//Blank SR input
+    P1OUT |= currentGlyphPattern & SRDATA;	//Luckily SRDATA is BIT7!
     currentGlyphPattern = currentGlyphPattern << 1;
-    P2OUT &= (digit | ~DEMUX); // Select character on decoder, which raises clock
+    P2OUT &= (digit | ~DEMUX);	// Select character on decoder, which raises clock
   }
 }
 
@@ -86,33 +94,82 @@ void display(char* displayString) {
   }
 }
 
+void bufBCD (unsigned char x) { //Don't return the value this time, just write directly to the display buffer
+  displayBuffer[0] = (x / 100);
+  displayBuffer[1] = ((x % 100) / 10);
+  displayBuffer[2] = ((x % 10)); 
+}
+
+volatile unsigned char setpoint = 200;
+volatile char speed = 0;
+enum modes {SETPOINT, SPEED};
+volatile enum modes displayMode = SETPOINT;
+
 int main(void) {
 
   WDTCTL = WDTPW + WDTHOLD;	//Stop WDT
   initLEDs();			//Setup LEDs
-
+  initButtons();		//and buttons
   BCSCTL3 |= LFXT1S_2;		//Set ACLK to use internal VLO (12 kHz clock)
-  TACTL = TASSEL_1 | MC_1;	//Set TimerA to use auxiliary clock in UP mode
-  TACCTL0 = CCIE;		//Enable the interrupt for TACCR0 match
-  TACCR0 = 100;			//Set TACCR0 which also starts the timer
   WRITE_SR(GIE);		//Enable global interrupts
-  displayBuffer = {1, 2, 3};
   while(1) {
   }
 }
 
-int testDigit = 1;
+char displayState = 1;
 
 interrupt(TIMERA0_VECTOR) TIMERA0_ISR(void) {
-  dispNumber(displayBuffer[0],DIGIT1);	// Display H (0xC) on DIGIT1
-  __delay_cycles(2400);	// Just pause here for testing
-  dispNumber(displayBuffer[1],DIGIT2);	// Display 1 (0x1) on DIGIT2
-  __delay_cycles(2400);	// Just pause here for testing
-  dispNumber(displayBufffer[2],DIGIT3);	// Display ! (0xB) on DIGIT3
-  __delay_cycles(2400);	// Just pause here for testing
-  blank();			// Give all the digits equal time
+  switch (displayState) {
+    case 1:
+      switch (displayMode) {
+        case SETPOINT:
+          bufBCD(setpoint);  //"hsync"
+	  break;
+	case SPEED:
+	  bufBCD(speed);
+      }
+      dispNumber(displayBuffer[0],DIGIT1);
+      ++displayState;
+    break;
+    case 2:
+      dispNumber(displayBuffer[1],DIGIT2);
+      ++displayState;
+    break;
+    case 3:
+      dispNumber(displayBuffer[2],DIGIT3);
+      displayState = 1;
+  }
 }
 
-interrupt(PORT1_VECTOR) TIMERA0_ISR(void) {
-  
+interrupt(PORT1_VECTOR) PORT1_ISR(void) {
+  switch (~P1IN & BUTTON1) {
+    case 0:
+      displayMode = SETPOINT;
+      switch (P1IFG & BUTTONS) {
+        case BUTTON2:
+          if (setpoint != 0) {
+            --setpoint;
+          }
+        break;
+        case BUTTON3:
+          if (setpoint != 255) {
+            ++setpoint;
+          }
+      }
+    break;
+    case BUTTON1:
+      displayMode = SPEED;
+      switch (P1IFG & BUTTONS) {
+        case BUTTON2:
+          if (speed != -5) {
+            --speed;
+          }
+        break;
+        case BUTTON3:
+          if (speed != 5) {
+            ++speed;
+          }
+      }
+  }
+  P1IFG = 0;
 }
