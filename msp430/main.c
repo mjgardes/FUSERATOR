@@ -7,9 +7,9 @@
 #define DOWNBTN BIT1
 #define MODIFIER BIT2
 #define BUTTONS (UPBTN | DOWNBTN | MODIFIER)
-#define RCK BIT3
-#define SER BIT4
-#define SCK BIT5
+#define RCK BIT7
+#define SER BIT6
+#define SCK BIT7
 #define DIGIT3 BIT6
 #define DIGIT2 BIT5
 #define DIGIT1 BIT4
@@ -63,9 +63,10 @@ void initLEDs(void) {
   TACTL = TASSEL_1 | MC_1;	//Set TimerA to use auxiliary clock in UP mode
   TACCTL0 = CCIE;		//Enable the interrupt for TACCR0 match
   TACCR0 = 32;			//Set TACCR0 which also starts the timer
-  P1DIR |= SER | SCK | RCK;	//Set SR pins as outputs
+  P1DIR |= SER | SCK;		//Set SR pins as outputs
   P1SEL = 0;			//In case the chip doesn't default to I/O
-//  P2SEL = 0;			//Might as well save the bits when P2 is unconnected
+  P1DIR |= RCK;			//Set SR pins as outputs
+  P2SEL = 0;			//Might as well save the bits when P2 is unconnected
 }
 
 void initSD16(void) {
@@ -73,10 +74,11 @@ void initSD16(void) {
     SD16INCH_0 |	//Enable input
     SD16GAIN1 |		//Preamp gain
     SD16INTDLY0;	//Interrupt delay
-  SD16AE = SD16AE3;	//Enable analog input 3 and disable digital circuitry
+  SD16AE = SD16AE2;	//Enable analog input 3 and disable digital circuitry
   SD16CTL = 		//SD16 control register
     SD16SSEL0 |		//Clock source
     SD16DIV_3 |		//Clock divider
+    SD16REFON |		//Outout reference voltage to pin 5
     SD16XDIV_3; 	//Extended clock divider
   SD16IV = SD16IV_SD16MEM0; //Interrupt mode
   SD16CCTL0 =		//SD16 channel 0 control register
@@ -118,7 +120,7 @@ void dispNumber(uint8_t glyph, uint8_t digit) {
   P1OUT &= ~(SCK | SER);
   P1OUT |= SCK;	//Need 100 ns or so delay, i guess
   //All done! push signals out
-  P1OUT |= RCK;
+  P2OUT |= RCK;
 }
 
 /* The following function was stolen from 
